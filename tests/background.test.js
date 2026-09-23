@@ -1,0 +1,117 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+const local = {};
+const session = {};
+const area = data => ({
+  get: async keys => Object.fromEntries((Array.isArray(keys) ? keys : [keys]).map(k => [k, data[k]])),
+  set: async patch => Object.assign(data, structuredClone(patch)),
+  setAccessLevel: async () => {}
+});
+let listener;
+globalThis.chrome = {
+  storage: { local: area(local), session: area(session) },
+  action: { onClicked: { addListener() {} } },
+  runtime: { id: 'extension', getURL: file => `chrome-extension://extension/${file}`, onMessage: { addListener: fn => { listener = fn; } } }
+};
+await import('../extension/background.js');
+const sender = { id: 'extension', tab: { id: 1 }, frameId: 0, url: 'https://x.com/home' };
+const send = (m, origin = sender) => new Promise(resolve => {
+  const async = listener(m, origin, resolve);
+  if (!async) resolve(undefined);
+});
+let requests = 0;
+let responseStatus = 200;
+let lastRequest;
+let responseBody = { answers: { advertising: { type: 'noul', noul: 0.99 } }, usage: { input_tokens: 100 } };
+globalThis.fetch = async (url, options) => {
+  requests++;
+  lastRequest = JSON.parse(options.body);
+  assert.equal(url, 'https://api.typesafe.ai/v1/systemone');
+  assert.equal(options.credentials, 'omit');
+  assert.equal(options.headers.Authorization, 'Bearer fake-test-key');
+  return new Response(JSON.stringify(responseBody), { status: responseStatus });
+};
+
+test('background integration with mocked Chrome and HTTP', async t => {
+  await t.test('rejects foreign origins and DM requests', async () => {
+    assert.equal(await send({ type: 'classify', text: 'x' }, { ...sender, url: 'https://evil.example/' }), undefined);
+    assert.equal(await send({ type: 'classify', text: 'x' }, { ...sender, url: 'https://x.com/messages/1' }), undefined);
+    assert.equal(requests, 0);
+  });
+  await t.test('AI off and missing key do not make external requests', async () => {
+    await send({ type: 'classify', text: 'one' });
+    local.config = { aiEnabled: true };
+    assert.match((await send({ type: 'classify', text: 'one' })).error, /密钥/);
+    assert.equal(requests, 0);
+  });
+  await t.test('concurrent identical posts deduplicate and consume one request', async () => {
+    session.apiKey = 'fake-test-key';
+    const results = await Promise.all([send({ type: 'classify', text: 'same' }), send({ type: 'classify', text: 'same' })]);
+    assert.equal(results[0].probability, 0.99);
+    assert.equal(results[1].cached, true);
+    assert.equal(requests, 1);
+    assert.equal(local.usage.requests, 1);
+    assert.equal(local.usage.inputTokens, 100);
+    assert.ok(!JSON.stringify(session.decisions).includes('same'));
+    assert.ok(!JSON.stringify(local).includes('fake-test-key'));
+  });
+  await t.test('allowlist is enforced in background before API', async () => {
+    local.config.allowlist = ['safe'];
+    assert.equal((await send({ type: 'classify', text: 'new', author: 'safe' })).skipped, true);
+    assert.equal(requests, 1);
+  });
+  await t.test('budget enforced before API across tabs', async () => {
+    local.config.dailyLimit = 1;
+    assert.match((await send({ type: 'classify', text: 'new' }, { ...sender, tab: { id: 2 } })).error, /上限/);
+    assert.equal(requests, 1);
+    local.config.dailyLimit = 100;
+  });
+  await t.test('invalid model output fails open and sets cooldown', async () => {
+    responseBody = { answers: { advertising: { type: 'noul', noul: 'yes' } } };
+    const result = await send({ type: 'classify', text: 'invalid' });
+    assert.equal(result.probability, undefined);
+    assert.match(result.error, /格式/);
+    await send({ type: 'classify', text: 'cooldown' });
+    assert.equal(requests, 2);
+  });
+  await t.test('429 backs off instead of starting request storm', async () => {
+    session.backoffUntil = 0; responseStatus = 429;
+    const result = await send({ type: 'classify', text: 'limited' });
+    assert.match(result.error, /429/);
+    await send({ type: 'classify', text: 'next' });
+    assert.equal(requests, 3);
+    assert.equal(local.usage.requests, 3);
+  });
+  await t.test('empty categories skip API; changed categories invalidate cached decision', async () => {
+    session.backoffUntil = 0;
+    local.config.categories = [];
+    const before = requests;
+    assert.equal((await send({ type: 'classify', text: 'same' })).skipped, true);
+    assert.equal(requests, before);
+    local.config.categories = ['gambling'];
+    responseStatus = 200;
+    responseBody = { answers: { advertising: { type: 'noul', noul: 0.01 } } };
+    assert.equal((await send({ type: 'classify', text: 'same' })).probability, 0.01);
+    assert.equal(requests, before + 1);
+    assert.ok(lastRequest.questions.advertising.criteria.true.includes('gambling'));
+    assert.ok(!lastRequest.questions.advertising.criteria.true.includes('subscriptions'));
+  });
+  await t.test('AI authorship works without ad categories and caches both scores', async () => {
+    local.config.categories = [];
+    local.config.aiContent = true;
+    responseBody = { answers: { advertising: { type: 'noul', noul: 0.01 }, ai_created: { type: 'noul', noul: 0.99 } } };
+    const before = requests;
+    const result = await send({ type: 'classify', text: 'AI sample' });
+    assert.equal(result.aiProbability, 0.99);
+    assert.equal(result.probability, 0.01);
+    assert.ok(lastRequest.questions.ai_created);
+    const cached = await send({ type: 'classify', text: 'AI sample' });
+    assert.equal(cached.cached, true);
+    assert.equal(cached.aiProbability, 0.99);
+    assert.equal(requests, before + 1);
+    local.config.aiContent = false;
+    assert.equal((await send({ type: 'classify', text: 'AI sample' })).skipped, true);
+    assert.equal(requests, before + 1);
+  });
+});

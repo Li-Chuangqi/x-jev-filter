@@ -1,0 +1,5 @@
+article[data-xjev-folded="true"] > :not(.xjev-placeholder) { display: none !important; }
+article[data-xjev-folded="true"][data-xjev-silent] { display: none !important; }
+.xjev-placeholder { display: flex !important; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px; font: 13px/1.6 system-ui, sans-serif; color: #657786; }
+.xjev-placeholder button { background: transparent; color: #1689c9; border: 1px solid #8cabbc; border-radius: 999px; padding: 5px 12px; cursor: pointer; font: inherit; }
+.xjev-placeholder button:focus-visible { outline: 3px solid #1689c9; outline-offset: 3px; }

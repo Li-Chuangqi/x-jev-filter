@@ -1,0 +1,13 @@
+{
+  "name": "x-jev-filter",
+  "version": "0.1.5",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check extension/content.js && node --check extension/background.js && node --check extension/options.js"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0"
+  }
+}

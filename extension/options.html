@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>X 清流 · 设置</title><link rel="stylesheet" href="options.css"></head>
+<body>
+  <main>
+    <header><img class="mark" src="icons/icon-128.png" width="52" height="52" alt="扫帚清扫 X 剪影"><div><span class="eyebrow">X 清流 / POWERED BY JEV</span><h1>把注意力还给内容。</h1><p>浏览 X 时，自动折叠平台广告和疑似营销信息。</p></div></header>
+    <form id="settings">
+      <section aria-labelledby="filter-title"><h2 id="filter-title">过滤偏好</h2>
+        <label class="toggle"><span><strong>启用清流</strong><small>适用于时间线、搜索结果、推文和回复区</small></span><input id="enabled" type="checkbox" role="switch"></label>
+        <label class="toggle"><span><strong>显示「清流已折叠」提示</strong><small>开启时显示提示条和「显示原文」按钮；关闭后直接隐藏平台广告及 AI 判定的营销内容。可重新开启此选项或关闭过滤来查看。</small></span><input id="showPlaceholder" type="checkbox" role="switch"></label>
+        <div class="field"><label for="threshold">折叠阈值 <output id="thresholdValue">95%</output></label><input id="threshold" type="range" min="0.50" max="0.99" step="0.01"><small>越高越谨慎。阈值用于广告和 AI 创作两项独立判断；模型估计不代表实测准确率。</small></div>
+        <div class="field"><label for="allowlist">始终显示这些账号</label><textarea id="allowlist" rows="3" placeholder="每行一个账号，例如 @example" spellcheck="false"></textarea><small>白名单优先于平台广告和 AI 判断；这些账号的内容不会发送给模型。</small></div>
+      </section>
+      <section aria-labelledby="categories-title"><h2 id="categories-title">要屏蔽的广告类别</h2>
+        <label class="toggle"><span><strong>系统广告（X 平台投放广告）</strong><small>根据平台广告标记本地过滤，无需 API。取消勾选后，这类广告保留显示，不再交给 AI 过滤。</small></span><input id="platformAds" type="checkbox"></label>
+        <label class="toggle"><span><strong>疑似 AI 创作内容</strong><small>默认关闭。需在「连接 Jev」中开启识别；独立于广告类别，共用折叠阈值。仅判断文字，不判断图片或视频。仅凭文字无法可靠确认 AI 创作，可能误判；可通过折叠提示恢复原文。</small></span><input id="aiContent" type="checkbox"></label>
+        <fieldset id="aiCategories" aria-describedby="categoryHint"><legend>AI 识别类别</legend><p id="categoryHint" class="hint"></p></fieldset>
+      </section>
+      <section aria-labelledby="api-title"><h2 id="api-title">连接 Jev</h2>
+        <label class="toggle"><span><strong>用 Jev 识别营销内容</strong><small>开启即同意将屏幕内推文和引用的文字发送至 TypeSafe API；可能包含受保护账号内容。不读取私信，不发送图片、Cookie 或账号凭据。</small></span><input id="aiEnabled" type="checkbox" role="switch"></label>
+        <p class="hint">使用 <a href="https://console.typesafe.ai/" target="_blank" rel="noreferrer">TypeSafe 官方密钥</a>。接口固定为 api.typesafe.ai，模型为 jev-latest。</p>
+        <div class="field"><label for="apiKey">API 密钥</label><input id="apiKey" type="password" autocomplete="off" placeholder="粘贴密钥；留空保留本次会话的已有密钥"><small id="keyStatus">正在读取密钥状态…</small></div>
+        <div class="field"><label for="dailyLimit">每日请求上限</label><input id="dailyLimit" type="number" min="1" max="10000" required><small>本机所有 X 标签页共享；连接测试、失败请求也计数。按本地日期重置，每分钟最多 120 次。</small></div>
+        <div class="actions"><button type="submit" class="primary">保存设置</button><button type="button" id="test">测试连接</button><button type="button" id="forget">清除密钥</button></div>
+        <p id="status" role="status" aria-live="polite"></p>
+      </section>
+    </form>
+    <section aria-labelledby="usage-title"><h2 id="usage-title">运行状态</h2><p id="usage">正在读取…</p><p id="lastError" class="hint"></p></section>
+    <footer>开启折叠提示时，可点击「显示原文」恢复内容；关闭过滤可恢复全部内容。模型不可用时正常显示。<br>当前版本仅判断文字，图片广告、隐晦引流和页面结构变化可能导致漏判。</footer>
+  </main><script type="module" src="options.js"></script>
+</body></html>
