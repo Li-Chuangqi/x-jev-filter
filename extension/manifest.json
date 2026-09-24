@@ -1,11 +1,12 @@
 {
   "manifest_version": 3,
   "name": "X 清流 · Jev 广告过滤",
-  "version": "0.3.1",
+  "version": "0.4.1",
   "description": "折叠 X 平台广告，用 Jev 识别营销推文和回复，并随时展开原文。",
   "minimum_chrome_version": "114",
   "permissions": [
-    "storage"
+    "storage",
+    "alarms"
   ],
   "host_permissions": [
     "https://api.typesafe.ai/*"
@@ -49,5 +50,6 @@
     "32": "icons/icon-32.png",
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
-  }
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxUY0h7iIpsoVtk9G9ZJ+EIJN3ursbqZSAfEmwsg17pVteUtdD/kt+jw0v66wtFSLnfRwed9hzy5iHEd6I66aV3J5+z65mNVMYVEKU4VIuQtzJP1XctD41DWcHH+4OoufXN6pQyyDzO0K2/Sa7kKg1CtlzAih9GRi+pydsicJ0meJyRYSsTCHIRxGeEd+YKwSh1G0kaQMw9Po++AOHDyHVlk89NeHkUNgtH8XXk2i29e118WRA11GKhYSRJd76Ll5/N7MfTYiXhJ0wpKPS8VWWEKt4w8nYoHViPg2FNv7mJzJLvHeCLJn919SvU28V1bkLfzu+BBSaGSoqghKViEx0QIDAQAB"
 }

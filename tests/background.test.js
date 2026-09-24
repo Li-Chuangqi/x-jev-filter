@@ -198,3 +198,13 @@ test('saved rules survive beyond 100; import is atomic, inactive and isolated fr
   assert.equal(local.rules.length, count + 1);
   assert.equal(local.samples.length, 0);
 });
+
+test('sync controls are restricted to options, not X content scripts', async () => {
+  assert.equal(await send({ type: 'sync-enable', enabled: true }), undefined);
+  assert.equal(await send({ type: 'sync-backups' }), undefined);
+  for (const type of ['key-sync-status', 'key-sync-enable', 'key-sync-save', 'key-sync-disable', 'key-sync-forget']) assert.equal(await send({ type, password: 'not-a-secret', apiKey: 'fake' }), undefined);
+  const optionsSender = { id: 'extension', url: 'chrome-extension://extension/options.html' };
+  assert.equal((await send({ type: 'sync-status' }, optionsSender)).status.enabled, false);
+  assert.equal((await send({ type: 'sync-enable', enabled: false }, optionsSender)).ok, true);
+  assert.ok((await send({ type: 'sync-enable', enabled: 'true' }, optionsSender)).error);
+});

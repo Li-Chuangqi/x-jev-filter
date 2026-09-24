@@ -2,6 +2,26 @@ import { settings, dayKey, AD_CATEGORIES } from './core.js';
 const $ = id => document.getElementById(id);
 const say = text => { $('status').textContent = text; };
 let savedDailyLimit;
+const KEY_MASK = '•'.repeat(48);
+let keyMasked = false;
+let keyEdited = false;
+let hasSavedKey = false;
+function renderKeyState(present) {
+  hasSavedKey = present;
+  if (keyEdited) return;
+  keyMasked = present;
+  $('apiKey').value = present ? KEY_MASK : '';
+  $('apiKey').placeholder = present ? '粘贴新的 API 密钥以替换' : '粘贴 API 密钥';
+}
+$('apiKey').addEventListener('focus', () => { if (keyMasked) $('apiKey').select(); });
+$('apiKey').addEventListener('beforeinput', () => {
+  if (keyMasked) { $('apiKey').value = ''; keyMasked = false; }
+});
+$('apiKey').addEventListener('input', () => { keyMasked = false; keyEdited = true; });
+$('apiKey').addEventListener('blur', () => {
+  if (!$('apiKey').value.trim()) { keyEdited = false; renderKeyState(hasSavedKey); }
+});
+
 for (const category of AD_CATEGORIES) {
   const label = document.createElement('label');
   label.className = 'toggle';
@@ -32,10 +52,11 @@ $('dailyLimitEnabled').addEventListener('change', updateDailyLimit);
 $('dailyLimit').addEventListener('invalid', () => { $('advancedSettings').open = true; });
 
 async function refreshStatus() {
-  const [{ apiKey, lastError }, { usage, config }] = await Promise.all([
-    chrome.storage.session.get(['apiKey', 'lastError']), chrome.storage.local.get(['usage', 'config'])
+  const [{ apiKey, lastError }, { usage, config, keySync }] = await Promise.all([
+    chrome.storage.session.get(['apiKey', 'lastError']), chrome.storage.local.get(['usage', 'config', 'keySync'])
   ]);
-  $('keyStatus').textContent = apiKey ? '密钥已设置，仅保存在当前浏览器会话中；浏览器退出后需重新填写。' : '尚未设置密钥。密钥仅保存在浏览器会话内存中。';
+  renderKeyState(Boolean(apiKey));
+  $('keyStatus').textContent = apiKey ? (keySync?.enabled ? '密钥已设置；已开启加密同步，本设备重启后可自动恢复。' : '密钥已设置，仅保存在当前浏览器会话中；浏览器退出后需重新填写。') : '尚未设置密钥。密钥仅保存在浏览器会话内存中。';
   const current = usage?.day === dayKey() ? usage : { requests: 0, inputTokens: 0 };
   $('usage').textContent = `今日 API 请求 ${current.requests} 次 · 已返回的输入用量 ${current.inputTokens.toLocaleString()} tokens`;
   const cfg = settings(config);
@@ -48,13 +69,18 @@ async function save() {
   const rawHandles = $('allowlist').value.split(/[\s,，]+/).filter(Boolean);
   if (rawHandles.some(x => !/^@?[a-zA-Z0-9_]{1,15}$/.test(x))) throw new Error('白名单中存在无效账号，请输入 @用户名，每行一个。');
   if (rawHandles.length > 500) throw new Error('白名单最多支持 500 个账号。');
-  const key = $('apiKey').value.trim();
+  const key = keyMasked ? '' : $('apiKey').value.trim();
+  if (key === KEY_MASK) throw new Error('圆点仅表示密钥已设置，请粘贴新的 API 密钥。');
   if (key && /\s/.test(key)) throw new Error('密钥不能包含空格或换行。');
   if ($('dailyLimitEnabled').checked && !$('dailyLimit').checkValidity()) throw new Error('每日请求上限应为 1–10000 的整数。');
   if (key) {
     await chrome.storage.session.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
-    await chrome.storage.session.set({ apiKey: key, backoffUntil: 0, lastError: '' });
-    $('apiKey').value = '';
+    const { keySync } = await chrome.storage.local.get('keySync');
+    if (keySync?.enabled) {
+      const result = await chrome.runtime.sendMessage({ type: 'key-sync-save', apiKey: key });
+      if (!result?.ok) throw new Error(result?.error || '密钥同步更新失败，请重试。');
+    } else await chrome.storage.session.set({ apiKey: key, backoffUntil: 0, lastError: '' });
+    if ($('apiKey').value.trim() === key) { keyEdited = false; renderKeyState(true); }
   }
   const { apiKey } = await chrome.storage.session.get('apiKey');
   if ($('aiEnabled').checked && !apiKey) throw new Error('开启 AI 过滤前，请先填写 API 密钥。');
@@ -93,10 +119,14 @@ $('test').addEventListener('click', async () => {
 });
 $('forget').addEventListener('click', async () => {
   try {
-    await chrome.storage.session.remove('apiKey');
+    const { keySync } = await chrome.storage.local.get('keySync');
+    if (keySync?.enabled) {
+      const result = await chrome.runtime.sendMessage({ type: 'key-sync-forget' });
+      if (!result?.ok) throw new Error('清除密钥同步凭据失败');
+    } else await chrome.storage.session.remove('apiKey');
     const { config } = await chrome.storage.local.get('config');
     await chrome.storage.local.set({ config: { ...settings(config), aiEnabled: false } });
-    $('apiKey').value = ''; $('aiEnabled').checked = false; updateCategoryHint();
+    keyEdited = false; renderKeyState(false); $('aiEnabled').checked = false; updateCategoryHint();
     await refreshStatus(); say('已清除密钥并关闭 AI 过滤。已发出的请求可能仍会完成。');
   } catch { say('清除失败，请重试。'); }
 });

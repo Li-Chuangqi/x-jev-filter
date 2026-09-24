@@ -1,11 +1,11 @@
 {
   "name": "x-jev-filter",
-  "version": "0.3.1",
+  "version": "0.4.1",
   "private": true,
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "check": "node --check extension/learning.js && node --check extension/rules.js && node --check extension/rule-editor.js && node --check extension/rules-options.js && node --check extension/core.js && node --check extension/dom.js && node --check extension/content.js && node --check extension/background.js && node --check extension/options.js"
+    "check": "node --check extension/learning.js && node --check extension/rules.js && node --check extension/rule-editor.js && node --check extension/rules-options.js && node --check extension/core.js && node --check extension/dom.js && node --check extension/content.js && node --check extension/background.js && node --check extension/options.js && node --check extension/sync.js && node --check extension/sync-options.js && node --check extension/key-sync.js && node --check extension/key-sync-options.js"
   },
   "devDependencies": {
     "jsdom": "^26.1.0"

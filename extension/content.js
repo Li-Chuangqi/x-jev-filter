@@ -6,19 +6,11 @@
   let active = 0;
   let stopped = false;
   const restored = new Set();
-  const temporaryHidden = new Set();
+  const temporaryHidden = new Map();
   const privatePage = () => /^\/(messages|i\/chat)(\/|$)/.test(location.pathname);
   const identity = data => JSON.stringify([data.id, data.author, data.displayName, data.text, data.promoted]);
   const visible = article => { const rect = article.getBoundingClientRect(); return rect.bottom > 0 && rect.top < innerHeight && rect.width > 0; };
-  let menu;
-  let menuAnchor;
   let toastTimer;
-  function closeMenu(focus = false) {
-    menu?.remove(); menu = null;
-    menuAnchor?.setAttribute('aria-expanded', 'false');
-    if (focus && menuAnchor?.isConnected) menuAnchor.focus();
-    menuAnchor = null;
-  }
   function toast(text, undo) {
     document.getElementById('xjev-toast')?.remove();
     clearTimeout(toastTimer);
@@ -56,70 +48,44 @@
     button?.closest('.xjev-manual-slot')?.remove();
     button = document.createElement('button'); button.type = 'button'; button.className = 'xjev-manual';
     button.dataset.identity = state.identity;
-    button.title = '清流：手动屏蔽'; button.setAttribute('aria-label', '清流：手动屏蔽');
-    button.setAttribute('aria-expanded', 'false'); button.setAttribute('aria-haspopup', 'dialog');
+    button.title = '屏蔽并学习相似内容'; button.setAttribute('aria-label', '屏蔽并学习相似内容');
+    button.disabled = !data.text.trim();
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
     const path = document.createElementNS(svg.namespaceURI, 'path');
     path.setAttribute('d', 'M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.8 5.2A10 10 0 0 1 12 5c5 0 9 7 9 7a19 19 0 0 1-3.1 3.7M6.1 6.1A19 19 0 0 0 3 12s4 7 9 7a10 10 0 0 0 4.2-1');
     svg.append(path); button.append(svg);
-    button.onclick = event => {
+    button.onclick = async event => {
       event.preventDefault(); event.stopPropagation();
-      if (menuAnchor === button) { closeMenu(true); return; }
-      closeMenu();
-      if (identity(XJevDOM.extract(article)) !== state.identity || privatePage()) return;
-      menuAnchor = button; button.setAttribute('aria-expanded', 'true');
-      menu = document.createElement('div'); menu.className = 'xjev-menu';
-      menu.setAttribute('role', 'dialog'); menu.setAttribute('aria-label', '清流屏蔽选项');
-      for (const [kind, label] of [['similar', '屏蔽并学习相似内容'], ['author', `屏蔽账号 @${data.author}`]]) {
-        const action = document.createElement('button'); action.type = 'button'; action.dataset.kind = kind; action.textContent = label;
-        action.disabled = kind === 'similar' && !data.text.trim();
-        action.onclick = async event => {
-          event.preventDefault(); event.stopPropagation();
-          if (!article.isConnected || identity(XJevDOM.extract(article)) !== state.identity || privatePage()) { closeMenu(); return; }
-          closeMenu();
-          if (kind === 'similar') {
-            const key = state.identity;
-            restored.delete(key); temporaryHidden.add(key); schedule();
-            toast('本条已折叠；规则保存后才应用到后续内容', () => { temporaryHidden.delete(key); restored.add(key); schedule(); });
-            XJevRuleEditor.open(XJevRules.draft(data), { source: data, onSave: async rule => {
-              const result = await chrome.runtime.sendMessage({ type: 'save-rule', rule, sourceData: data });
-              if (!result?.ok) throw new Error(result?.error || '保存失败');
-              await reload();
-              toast(`已保存规则：${result.record.name}`, async () => { await forget(result.record.recordId); temporaryHidden.delete(key); restored.add(key); schedule(); });
-            } });
-            return;
-          }
-          try {
-            const result = await chrome.runtime.sendMessage({ type: 'learn-block', kind, data });
-            if (!result?.ok) throw new Error(result?.error || '保存失败');
-            restored.delete(state.identity);
-            await reload();
-            toast('已保存账号规则', result.unchanged ? undefined : async () => {
-              if (result.previous) {
-                const undo = await chrome.runtime.sendMessage({ type: 'save-rule', rule: result.previous });
-                if (!undo?.ok) throw new Error('撤销失败');
-                await reload();
-              } else await forget(result.record.recordId);
-              restored.add(state.identity); schedule();
-            });
-          } catch (error) { toast(error.message || '屏蔽失败，请重试'); }
-        };
-        menu.append(action);
+      if (button.disabled || !article.isConnected || !config.enabled || identity(XJevDOM.extract(article)) !== state.identity || privatePage() || config.allowlist?.includes(data.author)) return;
+      button.disabled = true;
+      const key = state.identity;
+      restored.delete(key);
+      temporaryHidden.set(key, { reason: '本次手动屏蔽' });
+      document.getElementById('xjev-toast')?.remove();
+      fold(article, state, '本次手动屏蔽');
+      try {
+        let rule;
+        try { rule = XJevRules.clean(XJevRules.draft(data)); }
+        catch {
+          // Generic short replies are not reliable global matching conditions.
+          rule = XJevRules.clean({ kind: 'content', match: 'post', postId: data.id,
+            name: `已屏蔽原帖 · ${String(data.displayName || data.author).slice(0, 35)}` });
+        }
+        const result = await chrome.runtime.sendMessage({ type: 'save-rule', rule, sourceData: data });
+        if (!result?.ok) throw new Error(result?.error || '保存失败');
+        temporaryHidden.set(key, { reason: result.record.name, recordId: result.record.recordId });
+        await reload();
+      } catch {
+        temporaryHidden.set(key, { reason: '本次手动屏蔽（规则未保存，可显示原文后重试）' });
+        schedule();
       }
-      document.body.append(menu);
-      const rect = button.getBoundingClientRect();
-      menu.style.left = `${Math.max(8, Math.min(rect.right - 280, innerWidth - 296))}px`;
-      menu.style.top = `${Math.max(8, Math.min(rect.bottom + 6, innerHeight - menu.offsetHeight - 8))}px`;
-      menu.querySelector('button:not(:disabled)')?.focus();
+      button.disabled = false;
     };
     const slot = document.createElement('div'); slot.className = 'xjev-manual-slot';
     slot.append(button);
     group.insertBefore(slot, shareSlot);
   }
-  document.addEventListener('click', event => { if (menu && !menu.contains(event.target) && !menuAnchor?.contains(event.target)) closeMenu(); });
-  document.addEventListener('keydown', event => { if (event.key === 'Escape' && menu) { event.preventDefault(); closeMenu(true); } });
-  addEventListener('scroll', () => closeMenu(), { passive: true });
 
   function unfold(article) {
     article.removeAttribute('data-xjev-folded');
@@ -177,14 +143,12 @@
     } finally { state.pending = false; active--; schedule(); }
   }
   function scan() {
-    if (menu && (!config.enabled || privatePage() || !menuAnchor?.isConnected)) closeMenu();
     for (const article of states.keys()) if (!article.isConnected) states.delete(article);
     for (const article of document.querySelectorAll('article[data-testid="tweet"]')) {
       const data = XJevDOM.extract(article);
       const key = identity(data);
       let state = states.get(article);
       if (!state || state.identity !== key) {
-        if (menuAnchor && article.contains(menuAnchor)) closeMenu();
         unfold(article);
         state = { identity: key, pending: false, retryAt: 0 };
         states.set(article, state);
@@ -194,7 +158,9 @@
       const rules = config.rules || [];
       const local = rules.find(rule => XJevRules.match(rule, data, config.allowlist));
       if (local) { fold(article, state, local.name, local.recordId); continue; }
-      if (temporaryHidden.has(key)) { fold(article, state, '本次手动屏蔽'); continue; }
+      const manual = temporaryHidden.get(key);
+      if (manual?.recordId && !rules.some(rule => rule.recordId === manual.recordId && XJevRules.eligible(rule, data, config.allowlist))) temporaryHidden.delete(key);
+      if (temporaryHidden.has(key)) { fold(article, state, manual.reason, manual.recordId); continue; }
       // System ads are a separate category: disabling it must not send them through AI.
       if (data.promoted) {
         if (config.platformAds) fold(article, state, '平台广告');

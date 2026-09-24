@@ -20,7 +20,7 @@
         <label class="toggle"><span><strong>用 Jev 识别营销内容</strong><small>开启即同意将屏幕内推文和引用的文字发送至 TypeSafe API；可能包含受保护账号内容。不读取私信，不发送图片、Cookie 或账号凭据。</small></span><input id="aiEnabled" type="checkbox" role="switch"></label>
         <label class="toggle"><span><strong>用 Jev 执行语义规则</strong><small>默认关闭，需同时开启上方 Jev 识别。开启即同意将当前文字、昵称、已启用的语义规则描述和例外，以及最多 5 条来源样本的文字、昵称发送至 TypeSafe。规则编号、样本账号标识不发送；至少 98% 的模型估计才折叠，不代表实测准确率。</small></span><input id="learningAiEnabled" type="checkbox" role="switch"></label>
         <p class="hint">使用 <a href="https://console.typesafe.ai/" target="_blank" rel="noreferrer">TypeSafe 官方密钥</a>。接口固定为 api.typesafe.ai，模型为 jev-latest。</p>
-        <div class="field"><label for="apiKey">API 密钥</label><input id="apiKey" type="password" autocomplete="off" placeholder="粘贴密钥；留空保留本次会话的已有密钥"><small id="keyStatus">正在读取密钥状态…</small></div>
+        <div class="field"><label for="apiKey">API 密钥</label><input id="apiKey" type="password" autocomplete="off" aria-describedby="keyStatus" placeholder="粘贴 API 密钥"><small id="keyStatus">正在读取密钥状态…</small></div>
         <details id="advancedSettings" class="advanced-settings">
           <summary>高级设置</summary>
           <label class="toggle"><span><strong>限制每日 API 请求量</strong><small>开启后，达到上限即暂停当天的新请求。关闭后不限每日总量，仍保留用量统计、每分钟限流和错误冷却。</small></span><input id="dailyLimitEnabled" type="checkbox" role="switch" aria-controls="dailyLimitField"></label>
@@ -31,6 +31,23 @@
         <p id="status" role="status" aria-live="polite"></p>
       </section>
     </form>
+    <section aria-labelledby="sync-title"><h2 id="sync-title">个人规则同步</h2>
+      <label class="toggle"><span><strong>通过 Chrome 同步我的规则</strong><small>默认关闭。请在每台设备使用同一 Chrome 账号，开启浏览器同步中的“扩展程序”，并在清流中开启此开关。</small></span><input id="ruleSyncEnabled" type="checkbox" role="switch"></label>
+      <p class="hint">同步规则条件、启停状态与规则内例外；可能包含模板原文和账号。数据通过 Chrome 同步存储，不公开给其他用户。此开关不上传 API 密钥、来源样本、全局白名单、过滤设置和用量。密钥同步需单独开启。不同 X 账号共用这份规则。</p>
+      <p id="ruleSyncStatus" role="status" aria-live="polite">正在读取同步状态…</p>
+      <div class="actions"><button type="button" id="ruleSyncNow">立即同步</button><button type="button" id="ruleSyncBackups">导出冲突备份</button></div>
+      <p class="hint">离线可继续使用。关闭仅停止本设备同步，不删除云端规则。并发修改采用版本时间较新者；被替换的本机规则最多保留 20 条冲突备份。Chrome 同步存储写入成功不代表其他设备已收到。</p>
+    </section>
+    <section aria-labelledby="key-sync-title"><h2 id="key-sync-title">Jev 密钥同步</h2>
+      <label class="toggle"><span><strong>同步 Jev API 密钥</strong><small>独立于规则同步，默认关闭。只上传加密后的密钥，新设备输入一次同步口令即可使用。</small></span><input id="keySyncEnabled" type="checkbox" role="switch" aria-controls="keySyncSetup"></label>
+      <div id="keySyncSetup" hidden>
+        <label class="field" for="keySyncPassword">同步口令<input id="keySyncPassword" type="password" required autocomplete="off" minlength="12" maxlength="256" placeholder="至少 12 个字符，勿使用 API Key 作为口令"></label>
+        <p class="hint">首次设置前请先在“连接 Jev”保存密钥；其他设备填写相同口令。口令不上传也不保存，设备会保留本机解锁凭据，重启浏览器后可自动恢复密钥。请妥善保存口令。</p>
+        <button type="button" id="keySyncUnlock">开启并解锁</button>
+      </div>
+      <p id="keySyncStatus" role="status" aria-live="polite">正在读取…</p>
+      <p class="hint">关闭将移除本设备解锁凭据，当前会话密钥仍可使用；不会删除其他设备或 Chrome 同步存储中的密钥。“清除密钥”还会停用本设备密钥同步，避免自动恢复。</p>
+    </section>
     <section aria-labelledby="rules-title"><h2 id="rules-title">屏蔽规则</h2>
       <p class="hint">规则仅影响清流，不会在 X 上拉黑或举报。明确保存的规则长期保留，不随样本淘汰。白名单优先。</p>
       <div class="actions"><button type="button" id="addRule" class="primary">新建规则</button><button type="button" id="exportRules">导出规则</button><button type="button" id="importRules">导入规则</button><input id="rulesFile" type="file" accept=".json,application/json" hidden></div>
@@ -42,4 +59,6 @@
     <section aria-labelledby="usage-title"><h2 id="usage-title">运行状态</h2><p id="usage">正在读取…</p><p id="usageLimit" class="hint"></p><p id="lastError" class="hint"></p></section>
     <footer>开启折叠提示时，可点击「显示原文」恢复内容；关闭过滤可恢复全部内容。模型不可用时正常显示。<br>当前版本仅判断文字，图片广告、隐晦引流和页面结构变化可能导致漏判。</footer>
   </main><script type="module" src="options.js"></script><script type="module" src="rules-options.js"></script>
+<script type="module" src="sync-options.js"></script>
+<script type="module" src="key-sync-options.js"></script>
 </body></html>

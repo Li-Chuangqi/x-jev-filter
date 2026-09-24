@@ -1,14 +1,37 @@
 import { settings, makeRequest, probability, ENDPOINT, dayKey, fingerprint } from './core.js';
 import './learning.js';
 import './rules.js';
+import { createRuleSync } from './sync.js';
+import { createKeySync, KEY_SYNC_ITEM } from './key-sync.js';
 
 // Content scripts must never be able to read session credentials or session cache.
-const ready = Promise.all([chrome.storage.session.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' }), initializeRules()]);
+const ready = Promise.all([chrome.storage.session.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' }), initializeRules(), chrome.storage.sync?.setAccessLevel?.({ accessLevel: 'TRUSTED_CONTEXTS' })]);
 let tail = Promise.resolve();
 let waiting = 0;
 const cache = new Map();
 let cacheLoaded = false;
 let learningTail = Promise.resolve();
+
+const ruleSync = createRuleSync(chrome.storage);
+const keySync = createKeySync(chrome.storage);
+function queueSync() {
+  const task = learningTail.then(() => ready).then(async () => { await ruleSync.run(); await keySync.run(); });
+  learningTail = task.catch(() => {});
+  return task;
+}
+let syncTimer;
+function scheduleSync() {
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => { void queueSync().catch(() => {}); }, 2000);
+}
+chrome.storage.onChanged?.addListener((changes, area) => {
+  if ((area === 'local' && changes.rules) || (area === 'sync' && Object.keys(changes).some(k => k.startsWith('qingliu.rule.') || k === KEY_SYNC_ITEM))) scheduleSync();
+});
+chrome.alarms?.onAlarm.addListener(alarm => { if (alarm.name === 'rule-sync') void queueSync().catch(() => {}); });
+void ready.then(async () => {
+  await chrome.alarms?.create('rule-sync', { periodInMinutes: 5 });
+  await queueSync();
+}).catch(() => {});
 
 chrome.action.onClicked.addListener(() => chrome.runtime.openOptionsPage());
 
@@ -137,6 +160,35 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   const options = isOptions(sender);
   const fromX = isX(sender);
   if (!message || (!options && !fromX)) return false;
+  if (options && ['key-sync-status', 'key-sync-enable', 'key-sync-disable', 'key-sync-now', 'key-sync-save', 'key-sync-forget'].includes(message.type)) {
+    const task = learningTail.then(() => ready).then(async () => {
+      let status;
+      if (message.type === 'key-sync-enable') status = await keySync.enable(message.password);
+      else if (message.type === 'key-sync-disable') status = await keySync.disable();
+      else if (message.type === 'key-sync-forget') status = await keySync.disable(true);
+      else if (message.type === 'key-sync-now') status = await keySync.run();
+      else if (message.type === 'key-sync-save') status = await keySync.publish(message.apiKey);
+      else status = await keySync.status();
+      return { ok: true, status };
+    });
+    learningTail = task.catch(() => {});
+    task.then(respond, error => respond({ error: /^(请先|同步口令|同步密钥|无法写入 Chrome|密钥更新未保存)/.test(error.message || '') ? error.message : '密钥同步操作失败，请重试。' }));
+    return true;
+  }
+  if (options && ['sync-status', 'sync-enable', 'sync-now', 'sync-backups'].includes(message.type)) {
+    const task = learningTail.then(() => ready).then(async () => {
+      if (message.type === 'sync-enable') {
+        if (typeof message.enabled !== 'boolean') throw new Error('同步开关无效');
+        return { ok: true, status: await ruleSync.enable(message.enabled) };
+      }
+      if (message.type === 'sync-now') return { ok: true, status: await ruleSync.run() };
+      if (message.type === 'sync-backups') return { ok: true, backups: await ruleSync.backups() };
+      return { ok: true, status: await ruleSync.status() };
+    });
+    learningTail = task.catch(() => {});
+    task.then(respond, () => respond({ error: '无法访问同步存储，请重试。' }));
+    return true;
+  }
   if (message.type === 'config') { config().then(respond, () => respond(settings())); return true; }
   if ((message.type === 'learn-block' && fromX) || (['save-rule', 'forget-block'].includes(message.type) && (fromX || options)) || (['import-rules', 'clear-samples', 'delete-sample'].includes(message.type) && options)) {
     const task = learningTail.then(() => mutateLearning(message));

@@ -17,6 +17,9 @@ test('rule preview validates short drafts and saves only an explicit edited cond
   try {
     const dialog = w.XJevRuleEditor.open(w.XJevRules.draft(source), { source, onSave: async rule => { saved = rule; } });
     assert.equal(saved, undefined);
+    assert.equal(dialog.querySelector('.xjev-rule-advanced').open, false);
+    assert.ok(dialog.querySelector('[name=keywords]').closest('.xjev-rule-primary'));
+    assert.ok(dialog.querySelector('[name=exceptKeywords]').closest('.xjev-rule-advanced'));
     const form = dialog.querySelector('form');
     form.dispatchEvent(new w.Event('submit', { cancelable: true }));
     assert.match(dialog.querySelector('[role=status]').textContent, /至少填写/);
@@ -70,5 +73,22 @@ test('rule manager renders untrusted names as text and supports toggle, edit and
     w.document.querySelectorAll('.rule-card button')[1].click(); await flush();
     assert.equal(cfg.rules.length, 0);
     assert.match(w.document.getElementById('rulesList').textContent, /还没有规则/);
+  } finally { w.close(); }
+});
+
+test('editor prevents stacked dialogs and duplicate saves while a save is pending', async () => {
+  const page = setup(), w = page.window;
+  let count = 0, finish;
+  try {
+    const draft = { kind: 'author', name: '账号规则', author: 'seller' };
+    const dialog = w.XJevRuleEditor.open(draft, { onSave: () => { count++; return new Promise(resolve => { finish = resolve; }); } });
+    assert.equal(w.XJevRuleEditor.open(draft), dialog);
+    assert.equal(w.document.querySelectorAll('dialog').length, 1);
+    const form = dialog.querySelector('form');
+    form.dispatchEvent(new w.Event('submit', { cancelable: true }));
+    form.dispatchEvent(new w.Event('submit', { cancelable: true }));
+    assert.equal(count, 1);
+    finish(); await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(w.document.querySelector('dialog'), null);
   } finally { w.close(); }
 });
