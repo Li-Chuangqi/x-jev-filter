@@ -1,0 +1,18 @@
+.xjev-rule-editor { box-sizing: border-box; width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow: auto; padding: 24px; border: 1px solid #bbc8bf; border-radius: 16px; background: #fff; color: #202b27; font: 14px/1.6 system-ui,sans-serif; }
+.xjev-rule-editor::backdrop { background: #0008; }
+.xjev-rule-editor h2 { margin: 0 0 8px; font-size: 20px; }
+.xjev-rule-editor p, .xjev-rule-editor small { white-space: pre-wrap; overflow-wrap: anywhere; color: #62716a; }
+.xjev-rule-editor .xjev-rule-field { display: block; margin: 16px 0; }
+.xjev-rule-editor [hidden] { display: none !important; }
+.xjev-rule-editor label > span { display: block; margin-bottom: 6px; font-weight: 600; }
+.xjev-rule-editor input:not([type=checkbox]), .xjev-rule-editor select, .xjev-rule-editor textarea { box-sizing: border-box; width: 100%; border: 1px solid #bbc8bf; border-radius: 8px; padding: 9px; color: inherit; background: transparent; font: inherit; }
+.xjev-rule-editor input[type=checkbox] { width: 20px; height: 20px; accent-color: #21684e; }
+.xjev-rule-editor textarea { resize: vertical; }
+.xjev-rule-editor small { display: block; font-size: 12px; margin-top: 5px; }
+.xjev-rule-editor .xjev-rule-actions { display: flex; gap: 10px; position: sticky; bottom: -24px; margin: 16px -24px -24px; padding: 12px 24px; background: #fff; border-top: 1px solid #bbc8bf; }
+.xjev-rule-editor button { padding: 9px 16px; border: 1px solid #bbc8bf; border-radius: 8px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.xjev-rule-editor button[type=submit] { color: #fff; background: #21684e; border-color: #21684e; }
+.xjev-rule-editor button:disabled { opacity: .5; cursor: wait; }
+.xjev-rule-editor :focus-visible { outline: 2px solid #54a585; outline-offset: 2px; }
+.xjev-rule-editor summary { cursor: pointer; }
+@media (prefers-color-scheme: dark) { .xjev-rule-editor { background: #101713; color: #e7eee9; border-color: #35493d; } .xjev-rule-editor p, .xjev-rule-editor small { color: #a4b7aa; } .xjev-rule-editor select option, .xjev-rule-editor .xjev-rule-actions { background: #101713; } }

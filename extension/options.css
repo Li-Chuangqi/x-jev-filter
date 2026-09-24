@@ -12,6 +12,11 @@ section { background: var(--card); border: 1px solid var(--line); border-radius:
 h2 { font-size: 17px; margin: 0 0 18px; }
 fieldset { min-width: 0; border: 0; margin: 24px 0 0; padding: 0; }
 legend { padding: 0; font-weight: 600; }
+.advanced-settings { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 18px; }
+.advanced-settings > summary { cursor: pointer; font-weight: 600; }
+.learned-record { padding: 12px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.learned-record summary { cursor: pointer; }
+.learned-record p { white-space: pre-wrap; }
 .toggle { display: flex; align-items: center; gap: 24px; justify-content: space-between; padding: 15px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
 strong { font-weight: 600; } small { display: block; font-size: 12px; margin-top: 6px; line-height: 1.65; }
 input[type=checkbox] { width: 20px; height: 20px; flex-shrink: 0; accent-color: var(--accent); cursor: pointer; }
@@ -27,3 +32,12 @@ button:hover { filter: brightness(0.94); } button:disabled { opacity: 0.5; curso
 #status { min-height: 24px; margin: 15px 0 0; } #usage { font-variant-numeric: tabular-nums; } footer { font-size: 12px; padding: 4px 6px; }
 @media (prefers-color-scheme: dark) { :root { --bg: #131b17; --card: #1b2720; --ink: #ebf1ed; --muted: #adbdb2; --line: #35463c; --accent: #59a886; } button.primary { color: #102c20; } }
 @media (max-width: 480px) { main { margin: 28px auto; padding: 0 14px; } section { padding: 20px; } .mark { display: none; } }
+.rule-card { padding: 18px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.rule-heading { display: flex; gap: 16px; align-items: center; justify-content: space-between; }
+.rule-heading h3 { margin: 0; font-size: 16px; }
+.rule-enable { display: flex; align-items: center; gap: 8px; white-space: nowrap; font-size: 12px; }
+.rule-description { white-space: pre-wrap; max-height: 120px; overflow: auto; }
+.rule-card details p { white-space: pre-wrap; }
+.rule-card summary { cursor: pointer; }
+.rule-card .actions { margin-top: 12px; }
+#ruleSearch { margin-top: 8px; }

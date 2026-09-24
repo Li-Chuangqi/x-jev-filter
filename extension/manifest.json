@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "X 清流 · Jev 广告过滤",
-  "version": "0.1.5",
+  "version": "0.3.1",
   "description": "折叠 X 平台广告，用 Jev 识别营销推文和回复，并随时展开原文。",
   "minimum_chrome_version": "114",
   "permissions": [
@@ -21,11 +21,15 @@
         "https://www.x.com/*"
       ],
       "js": [
+        "learning.js",
+        "rules.js",
+        "rule-editor.js",
         "dom.js",
         "content.js"
       ],
       "css": [
-        "content.css"
+        "content.css",
+        "rule-editor.css"
       ],
       "run_at": "document_idle"
     }

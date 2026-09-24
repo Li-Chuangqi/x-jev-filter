@@ -1,11 +1,14 @@
 import { settings, makeRequest, probability, ENDPOINT, dayKey, fingerprint } from './core.js';
+import './learning.js';
+import './rules.js';
 
 // Content scripts must never be able to read session credentials or session cache.
-const ready = chrome.storage.session.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
+const ready = Promise.all([chrome.storage.session.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' }), initializeRules()]);
 let tail = Promise.resolve();
 let waiting = 0;
 const cache = new Map();
 let cacheLoaded = false;
+let learningTail = Promise.resolve();
 
 chrome.action.onClicked.addListener(() => chrome.runtime.openOptionsPage());
 
@@ -18,33 +21,78 @@ function isX(sender) {
   catch { return false; }
 }
 
+async function initializeRules() {
+  const stored = await chrome.storage.local.get(['rules', 'blockedSamples', 'config']);
+  if (!Array.isArray(stored.rules)) {
+    const migrated = XJevRules.migrate(stored.blockedSamples || [], stored.config);
+    await chrome.storage.local.set({ ...migrated, blockedSamples: [], rulesVersion: 1 });
+  }
+}
+
 async function config() {
-  const { config: stored } = await chrome.storage.local.get('config');
-  return settings(stored);
+  await ready;
+  const { config: stored, rules = [], samples = [] } = await chrome.storage.local.get(['config', 'rules', 'samples']);
+  return { ...settings(stored), rules, samples };
+}
+
+async function mutateLearning(message) {
+  const cfg = await config();
+  let rules = cfg.rules, samples = cfg.samples, record, previous;
+  if (message.type === 'save-rule' || message.type === 'learn-block') {
+    let raw = message.rule;
+    if (message.type === 'learn-block') {
+      if (message.kind !== 'author') throw new Error('请预览并保存规则后再应用到后续内容');
+      const data = XJevLearning.prepare(message.data, 'author');
+      if (cfg.allowlist.includes(data.author)) throw new Error('该账号在白名单中，请先从白名单移除');
+      const existing = rules.find(r => r.kind === 'author' && r.author === data.author);
+      if (existing?.enabled) return { ok: true, record: existing, unchanged: true };
+      raw = { name: `屏蔽账号 @${data.author}`, kind: 'author', author: data.author };
+      if (existing) { previous = existing; raw = { ...existing, enabled: true }; }
+    }
+    record = XJevRules.clean(raw);
+    if (record.kind === 'author' && cfg.allowlist.includes(record.author)) throw new Error('该账号在白名单中，请先从白名单移除');
+    if (record.recordId && !rules.some(r => r.recordId === record.recordId)) throw new Error('规则已被删除，请刷新后重试');
+    if (message.sourceData && record.kind !== 'author') {
+      const added = XJevRules.addSample(samples, message.sourceData);
+      samples = added.samples; record.sourceId = added.sample.recordId;
+    }
+    record.recordId ||= crypto.randomUUID();
+    rules = [record, ...rules.filter(r => r.recordId !== record.recordId)];
+  } else if (message.type === 'forget-block') {
+    rules = rules.filter(r => r.recordId !== message.recordId);
+  } else if (message.type === 'import-rules') {
+    const incoming = XJevRules.parseImport(message.document);
+    rules = [...incoming.map(r => ({ ...r, recordId: crypto.randomUUID() })), ...rules];
+  } else if (message.type === 'clear-samples') samples = [];
+  else if (message.type === 'delete-sample') samples = samples.filter(s => s.recordId !== message.recordId);
+  await chrome.storage.local.set({ rules, samples });
+  return { ok: true, record, previous, rules, samples };
 }
 
 async function evaluate(message, test = false) {
   await ready;
   const cfg = await config();
-  if (!test && (!cfg.enabled || !cfg.aiEnabled || (cfg.categories.length === 0 && !cfg.aiContent))) return { skipped: true };
+  const learned = !test && cfg.learningAiEnabled
+    ? XJevRules.semanticContext(message, cfg.rules, cfg.samples, cfg.allowlist) : null;
+  if (!test && (!cfg.enabled || !cfg.aiEnabled || (cfg.categories.length === 0 && !cfg.aiContent && !learned))) return { skipped: true };
   if (!test && cfg.allowlist.includes(String(message.author || '').toLowerCase())) return { skipped: true };
   const text = message.text;
   if (typeof text !== 'string' || !text.trim() || text.length > 5000) return { skipped: true };
   const { apiKey, backoffUntil = 0 } = await chrome.storage.session.get(['apiKey', 'backoffUntil']);
   if (!apiKey) return { skipped: true, error: '尚未设置 API 密钥', retryAfter: 60_000 };
-  const hash = await fingerprint(text, cfg.categories, cfg.aiContent);
+  const hash = await fingerprint(text, cfg.categories, cfg.aiContent, learned);
   if (!cacheLoaded) {
     const { decisions = [] } = await chrome.storage.session.get('decisions');
     for (const pair of decisions) cache.set(...pair);
     cacheLoaded = true;
   }
   const cached = cache.get(hash);
-  if (!test && cached && Date.now() - cached.at < 86_400_000) return { probability: cached.p, aiProbability: cached.aiProbability, cached: true };
+  if (!test && cached && Date.now() - cached.at < 86_400_000) return { probability: cached.p, aiProbability: cached.aiProbability, ruleScores: cached.ruleScores, cached: true };
   if (Date.now() < backoffUntil) return { skipped: true, error: 'API 暂停中，请稍后重试', retryAfter: backoffUntil - Date.now() };
   const { usage: old = {} } = await chrome.storage.local.get('usage');
   const today = dayKey();
   const usage = old.day === today ? old : { day: today, requests: 0, inputTokens: 0 };
-  if (usage.requests >= cfg.dailyLimit) return { skipped: true, error: '已达今日请求上限', retryAfter: 60_000 };
+  if (cfg.dailyLimitEnabled && usage.requests >= cfg.dailyLimit) return { skipped: true, error: '已达今日请求上限', retryAfter: 60_000 };
   const { recent = [] } = await chrome.storage.session.get('recent');
   const window = recent.filter(t => Date.now() - t < 60_000);
   if (window.length >= 120) return { skipped: true, error: '已达每分钟请求上限', retryAfter: 60_000 - (Date.now() - window[0]) };
@@ -57,7 +105,7 @@ async function evaluate(message, test = false) {
   try {
     const response = await fetch(ENDPOINT, {
       method: 'POST', headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(makeRequest(text, cfg.categories, cfg.aiContent)), signal: controller.signal,
+      body: JSON.stringify(makeRequest(text, cfg.categories, cfg.aiContent, learned)), signal: controller.signal,
       credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer'
     });
     if (!response.ok) {
@@ -69,6 +117,7 @@ async function evaluate(message, test = false) {
     const data = await response.json();
     const p = probability(data);
     const aiDecision = cfg.aiContent ? { aiProbability: probability(data, 'ai_created') } : {};
+    if (learned) aiDecision.ruleScores = learned.rules.map(rule => ({ recordId: rule.recordId, probability: probability(data, rule.key) }));
     if (Number.isInteger(data.usage?.input_tokens) && data.usage.input_tokens >= 0) usage.inputTokens += data.usage.input_tokens;
     await chrome.storage.local.set({ usage });
     cache.set(hash, { p, ...aiDecision, at: Date.now() });
@@ -89,6 +138,12 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   const fromX = isX(sender);
   if (!message || (!options && !fromX)) return false;
   if (message.type === 'config') { config().then(respond, () => respond(settings())); return true; }
+  if ((message.type === 'learn-block' && fromX) || (['save-rule', 'forget-block'].includes(message.type) && (fromX || options)) || (['import-rules', 'clear-samples', 'delete-sample'].includes(message.type) && options)) {
+    const task = learningTail.then(() => mutateLearning(message));
+    learningTail = task.catch(() => {});
+    task.then(respond, error => respond({ error: error.message || '保存屏蔽记录失败' }));
+    return true;
+  }
   if ((message.type === 'classify' && fromX) || (message.type === 'test' && options)) {
     if (waiting >= 20) { respond({ skipped: true, retryAfter: 5000 }); return false; }
     waiting++;

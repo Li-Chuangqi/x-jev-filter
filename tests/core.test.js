@@ -50,3 +50,12 @@ test('AI authorship is opt-in, independent of advertising, and isolated in cache
   assert.equal(probability({ answers: { ai_created: { type: 'noul', noul: 0.99 } } }, 'ai_created'), 0.99);
   assert.throws(() => probability({ answers: {} }, 'ai_created'));
 });
+
+test('daily budget preserves legacy limits and supports an explicit opt-out', () => {
+  assert.equal(settings().dailyLimitEnabled, true);
+  assert.equal(settings({ dailyLimit: 321 }).dailyLimitEnabled, true);
+  const unlimited = settings({ dailyLimitEnabled: false, dailyLimit: 321 });
+  assert.equal(unlimited.dailyLimitEnabled, false);
+  assert.equal(unlimited.dailyLimit, 321);
+  assert.equal(settings({ ...unlimited, dailyLimitEnabled: true }).dailyLimit, 321);
+});

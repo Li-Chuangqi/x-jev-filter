@@ -8,12 +8,13 @@
     const user = own('[data-testid="User-Name"]')[0];
     // Prefer permalink identity: a display name can contain somebody else's @handle.
     const handle = match?.[1] || user?.textContent.match(/@([a-zA-Z0-9_]{1,15})\b/)?.[1] || '';
+    const displayName = (user?.querySelector('a')?.textContent || user?.textContent.split('@')[0] || '').trim().slice(0, 100);
     const body = own('[data-testid="tweetText"]').map(n => n.textContent.trim()).join('\n[引用内容]\n');
     const text = body.slice(0, 5000);
     // Avoid searching post text for the words “Ad” or “广告”.
     const promoted = own('[data-testid="placementTracking"]').length > 0 || !!article.closest('[data-testid="placementTracking"]') ||
       own('[data-testid="promotedIndicator"]').length > 0;
-    return { id: match?.[2] || '', author: handle.toLowerCase(), text, promoted };
+    return { id: match?.[2] || '', author: handle.toLowerCase(), displayName, text, promoted };
   }
   globalThis.XJevDOM = { extract };
 })();

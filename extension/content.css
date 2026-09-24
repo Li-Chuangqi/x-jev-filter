@@ -3,3 +3,20 @@ article[data-xjev-folded="true"][data-xjev-silent] { display: none !important; }
 .xjev-placeholder { display: flex !important; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px; font: 13px/1.6 system-ui, sans-serif; color: #657786; }
 .xjev-placeholder button { background: transparent; color: #1689c9; border: 1px solid #8cabbc; border-radius: 999px; padding: 5px 12px; cursor: pointer; font: inherit; }
 .xjev-placeholder button:focus-visible { outline: 3px solid #1689c9; outline-offset: 3px; }
+.xjev-manual-slot { display: flex; align-items: center; justify-content: center; align-self: center; flex: 0 0 32px; height: 32px; }
+.xjev-manual { opacity: 0; pointer-events: none; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 32px; width: 32px; height: 32px; padding: 5px; border: 0; border-radius: 50%; background: transparent; color: #71767b; cursor: pointer; }
+.xjev-manual svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.xjev-manual:hover { color: #1d9bf0; background: #1d9bf020; }
+article[data-testid="tweet"]:hover .xjev-manual,
+.xjev-manual:focus-visible,
+.xjev-manual[aria-expanded="true"] { opacity: 1; pointer-events: auto; }
+@media (hover: none) { .xjev-manual { opacity: 1; pointer-events: auto; } }
+.xjev-menu, #xjev-toast { position: fixed; z-index: 2147483647; background: #fff; color: #18241d; border: 1px solid #bbc8bf; box-shadow: 0 5px 24px #0003; border-radius: 12px; padding: 16px; font: 14px/1.5 system-ui, sans-serif; }
+.xjev-menu { padding: 8px; width: min(280px, calc(100vw - 48px)); max-height: calc(100vh - 32px); overflow: auto; box-sizing: border-box; }
+.xjev-menu button, #xjev-toast button { display: block; padding: 10px; width: 100%; background: transparent; border: 0; color: inherit; text-align: left; font: inherit; cursor: pointer; border-radius: 6px; }
+.xjev-menu button:hover, #xjev-toast button:hover { background: #81b89a22; }
+.xjev-menu button:disabled { opacity: .45; cursor: default; }
+.xjev-manual:focus-visible, .xjev-menu button:focus-visible, #xjev-toast button:focus-visible { outline: 2px solid #1d9bf0; outline-offset: 2px; }
+#xjev-toast { bottom: 24px; left: 50%; transform: translateX(-50%); max-width: min(480px, calc(100vw - 48px)); }
+#xjev-toast button { width: auto; color: #1689c9; padding: 8px 0 0; }
+@media (prefers-color-scheme: dark) { .xjev-menu, #xjev-toast { background: #101713; color: #e7eee9; border-color: #35493d; } }

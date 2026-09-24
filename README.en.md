@@ -6,7 +6,9 @@
 
 [简体中文](README.md) | **English**
 
-> Version 0.1.5 · Manifest V3 · Personal-use prototype. Decisions can be wrong. Full validation against live X pages and the real Jev API, including accuracy evaluation, has not been completed.
+> Version 0.3.1 · Manifest V3 · Personal-use prototype. Decisions can be wrong. Full validation against live X pages and the real Jev API, including accuracy evaluation, has not been completed.
+
+[更新日志 / Changelog](CHANGELOG.md) · [v0.3.1 Release](https://github.com/Li-Chuangqi/x-jev-filter/releases/tag/v0.3.1)
 
 ## Features
 
@@ -41,18 +43,41 @@ To update, replace the files in the same directory, reload the extension in Chro
 | AI advertising categories | All selected, active only when Jev is enabled |
 | Collapsed-content placeholder | On |
 | Filtering threshold | 0.95; a model estimate, not measured accuracy |
-| Daily request limit | 1,000, shared across X tabs |
+| Limit daily API requests | On, 1,000/day; optional under advanced settings, shared across X tabs |
 
 Platform ads are identified locally using page markers. When this category is off, identified platform ads also bypass AI processing. For AI advertising categories, matching any selected category can trigger filtering; categories can overlap. AI-authorship assessment is separate and works with all advertising categories deselected, but still requires the Jev master switch.
 
-Only on-screen post text in a visible tab is processed. Requests include at most 5,000 characters. Up to 500 content-hash decisions are cached for 24 hours within the browser session. Limits are 120 requests per minute and a 12-second timeout. Failed requests and manual connection tests count toward the local budget; this is not a dollar spending cap.
+Automatic API decisions process on-screen text in a visible tab; local rules also apply to loaded content. Requests include at most 5,000 characters. Up to 500 content-hash decisions are cached for 24 hours within the browser session. Limits are 120 requests per minute and a 12-second timeout. Failed requests and manual connection tests count toward the local budget; this is not a dollar spending cap. Under Connect Jev → Advanced settings, turn off “限制每日 API 请求量” (Limit daily API requests) to remove the daily cap. Usage statistics, per-minute limits and error cooldowns remain active. Updates preserve existing caps; re-enabling the limit uses the previously saved value.
+
+## Explicit, editable blocking rules
+
+The crossed-eye action appears to the left of Share when hovering over a post or reply. It offers:
+
+- **Block and learn similar content:** immediately collapse the current post, then preview locally extracted conditions. Only saving the draft applies the rule to future content. Canceling stores no rule or sample; the temporary hide can be undone and lasts only for the current page session.
+- **Block this account:** save an account rule immediately. This changes extension display only, without blocking or reporting the account on X.
+
+The settings rule manager supports creation, editing, source inspection, enable/disable, deletion, search and JSON import/export. Collapsed placeholders identify the matching rule and offer restoration or rule removal.
+
+| Type | Editable fields | Execution |
+| --- | --- | --- |
+| Account | Handle and keyword/account exceptions | Local exact match |
+| Content | Text/name/both, keywords, URL domains, AND/OR conditions, or a near-duplicate text template | Local matching |
+| Semantic | Explicit content pattern, scope and natural-language exceptions | Separate Jev decision per rule |
+
+- Keywords use case-insensitive substring matching. Domains match exact hosts in visible HTTP(S) text URLs, without expanding shortened links or automatically including subdomains. Similarity templates require at least 20 characters and only match very close text of comparable length.
+- Extracted cues are drafts, not active rules. A short generic reply may require manually specifying conditions or a semantic description. The extension does not generate natural-language rules or train/fine-tune a model.
+- Per-rule keyword and account exceptions override that rule; other rules can still match. The global allowlist overrides all rules.
+- **Semantic rules are off by default** and require both the Jev master switch and “用 Jev 执行语义规则”. Requests include current text/name, all eligible active semantic descriptions and exceptions, and up to five related source samples with text/display names. Each rule has its own Noul question and requires at least a 0.98 score, which is not measured accuracy. Rule/sample changes invalidate relevant prior decisions.
+- **Saved rules are not evicted at 100 entries.** Only independent source samples are capped at 100, deduplicated, then evicted oldest first. Deleting a source never deletes the saved rule or its template/description. Browser storage failures report an error instead of silently deleting rules.
+- Imports add rules without replacing existing ones and keep all imported rules disabled for review. Exports contain conditions, handles and template text, but not independent source records, API keys or usage. Import files are limited to 2 MB each.
+- Upgrades migrate existing account/post/similarity records into editable rules, preserving previous switch intent. Previously evicted records cannot be recovered. Legacy single-post blocks remain editable post-ID rules.
 
 ## Privacy and credentials
 
-When enabled, Jev receives visible post text and quoted text through **TypeSafe**. This may include protected-account posts and personal information contained in the text. The extension does not read DMs or deliberately send author fields, post URLs, cookies, images, or video. Information appearing inside post text is transmitted with that text.
+When enabled, Jev receives visible post text and quoted text through **TypeSafe**. This may include protected-account posts and personal information contained in the text. The extension does not read DMs or deliberately send account identifiers, post URLs, cookies, images, or video. Opt-in Jev semantic rules also send display names, rule descriptions/exceptions and reference examples as described above. Information appearing inside post text is transmitted with that text.
 
 - Keys remain in `chrome.storage.session`, inaccessible to content scripts, and must be entered again after the browser exits.
-- Preferences and usage totals are local. Hashed decision caches are session-only. No built-in telemetry or raw-post logging.
+- Preferences and usage totals are local. Hashed decision caches are session-only. No built-in telemetry. Rules and independent source samples may retain text, display names, handles and post IDs locally across restarts. Rules remain until explicitly deleted; source samples can be deleted or evicted by the separate sample limit.
 - Server-side data handling is governed by [TypeSafe’s privacy policy](https://typesafe.ai/legal/privacy-policy).
 
 The fixed endpoint is `https://api.typesafe.ai/v1/systemone`, using `jev-latest` and the native `state + questions` / `noul` contract, not a chat-completions endpoint. See the [TypeSafe API reference](https://docs.typesafe.ai/api).
@@ -61,7 +86,7 @@ The fixed endpoint is `https://api.typesafe.ai/v1/systemone`, using `jev-latest`
 
 X layout changes can break detection. Posts remain visible while requests are pending. This version does not perform OCR, video analysis, or full-thread context analysis. Advertising judgments may be incorrect, AI-authorship assessment is uncertain, and model updates can change behavior.
 
-**22 simulated tests pass**, covering DOM recycling, category changes, caching, rate limits, fail-open behavior, and restoring content. These tests do not establish live-site compatibility or model accuracy. The extension is not listed in the Chrome Web Store. This project is not affiliated with X or TypeSafe.
+**39 simulated tests pass**, covering DOM recycling, category changes, caching, rate limits, fail-open behavior, and restoring content. These tests do not establish live-site compatibility or model accuracy. The extension is not listed in the Chrome Web Store. This project is not affiliated with X or TypeSafe.
 
 ## Development
 

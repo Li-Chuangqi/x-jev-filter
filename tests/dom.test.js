@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 
+const learningCode = readFileSync(new URL('../extension/learning.js', import.meta.url), 'utf8');
+const rulesCode = readFileSync(new URL('../extension/rules.js', import.meta.url), 'utf8');
+const editorCode = readFileSync(new URL('../extension/rule-editor.js', import.meta.url), 'utf8');
 const domCode = readFileSync(new URL('../extension/dom.js', import.meta.url), 'utf8');
 const contentCode = readFileSync(new URL('../extension/content.js', import.meta.url), 'utf8');
 const post = (id, text, extra = '') => `<article data-testid="tweet"><div><div data-testid="User-Name">Name @author</div><a href="/author/status/${id}"><time>now</time></a><div data-testid="tweetText">${text}</div>${extra}</div></article>`;
@@ -19,7 +22,7 @@ test('AI authorship folds non-advertising text, restores when disabled and requi
     if (m.type === 'config') return cfg;
     calls++; return { probability: 0.01, aiProbability: 0.99 };
   } }, storage: { onChanged: { addListener: fn => { changed = fn; } } } };
-  w.eval(domCode); w.eval(contentCode);
+  w.eval(learningCode); w.eval(rulesCode); w.eval(editorCode); w.HTMLDialogElement.prototype.showModal = function () { this.open = true; }; w.HTMLDialogElement.prototype.close = function () { this.open = false; }; w.eval(domCode); w.eval(contentCode);
   try {
     await sleep(650);
     const article = w.document.querySelector('article');
@@ -47,7 +50,7 @@ test('system ads category is independent of AI, toggles restore and re-fold the 
     if (m.type === 'config') return cfg;
     calls++; return { probability: 1 };
   } }, storage: { onChanged: { addListener: fn => { changed = fn; } } } };
-  w.eval(domCode); w.eval(contentCode);
+  w.eval(learningCode); w.eval(rulesCode); w.eval(editorCode); w.HTMLDialogElement.prototype.showModal = function () { this.open = true; }; w.HTMLDialogElement.prototype.close = function () { this.open = false; }; w.eval(domCode); w.eval(contentCode);
   try {
     const article = w.document.querySelector('article');
     await sleep(300);
@@ -100,7 +103,7 @@ test('content lifecycle: fold, restore, recycle node, disable, whitelist and pri
     } },
     storage: { onChanged: { addListener: fn => { changed = fn; } } }
   };
-  w.eval(domCode); w.eval(contentCode);
+  w.eval(learningCode); w.eval(rulesCode); w.eval(editorCode); w.HTMLDialogElement.prototype.showModal = function () { this.open = true; }; w.HTMLDialogElement.prototype.close = function () { this.open = false; }; w.eval(domCode); w.eval(contentCode);
   try {
     await sleep(650);
     const articles = w.document.querySelectorAll('article');
@@ -159,12 +162,83 @@ test('late result cannot fold a recycled post; API errors leave content visible'
     ? { enabled: true, aiEnabled: true, threshold: 0.95, allowlist: [] }
     : m.text === 'SALE' ? new Promise(resolve => { finish = resolve; }) : { error: 'timeout' }
   }, storage: { onChanged: { addListener() {} } } };
-  w.eval(domCode); w.eval(contentCode);
+  w.eval(learningCode); w.eval(rulesCode); w.eval(editorCode); w.HTMLDialogElement.prototype.showModal = function () { this.open = true; }; w.HTMLDialogElement.prototype.close = function () { this.open = false; }; w.eval(domCode); w.eval(contentCode);
   try {
     await sleep(300);
     w.document.querySelector('[data-testid="tweetText"]').textContent = 'ordinary';
     finish({ probability: 1 });
     await sleep(650);
     assert.equal(w.document.querySelectorAll('[data-xjev-folded]').length, 0);
+  } finally { w.close(); }
+});
+
+test('manual action placement, learning, future matching, undo and stale menu protection', async () => {
+  const actions = '<div role="group"><span><button data-testid="reply">reply</button></span><span><button data-testid="bookmark">bookmark</button></span><span><button aria-label="Share post">share</button></span></div>';
+  const text = '限时优惠，购买我们的专业课程即可获得完整服务与教程，请私信了解详情。';
+  const page = new JSDOM(post('321', text, actions), { url: 'https://x.com/example/status/1', runScripts: 'outside-only', pretendToBeVisual: true });
+  const w = page.window;
+  let cfg = { enabled: true, aiEnabled: false, learningEnabled: true, allowlist: [], rules: [], samples: [] };
+  let writes = 0;
+  w.HTMLElement.prototype.getBoundingClientRect = () => ({ top: 20, bottom: 200, right: 400, width: 500 });
+  w.chrome = { runtime: { id: 'test', sendMessage: async m => {
+    if (m.type === 'config') return cfg;
+    if (m.type === 'save-rule') {
+      writes++;
+      const record = { ...w.XJevRules.clean(m.rule), recordId: String(writes) };
+      cfg = { ...cfg, rules: [...cfg.rules, record] };
+      return { ok: true, record };
+    }
+    if (m.type === 'forget-block') { cfg = { ...cfg, rules: cfg.rules.filter(s => s.recordId !== m.recordId) }; return { ok: true }; }
+    throw Error('No external classification while AI is off');
+  } }, storage: { onChanged: { addListener() {} } } };
+  w.eval(learningCode); w.eval(rulesCode); w.eval(editorCode); w.HTMLDialogElement.prototype.showModal = function () { this.open = true; }; w.HTMLDialogElement.prototype.close = function () { this.open = false; }; w.eval(domCode); w.eval(contentCode);
+  try {
+    await sleep(300);
+    const article = w.document.querySelector('article');
+    const manual = article.querySelector('.xjev-manual');
+    assert.ok(manual.parentElement.nextElementSibling.querySelector('[aria-label="Share post"]'));
+    manual.click();
+    w.document.querySelector('[data-kind="similar"]').click();
+    assert.equal(writes, 0, 'draft does not apply to future posts before save');
+    w.document.querySelector('.xjev-rule-editor form').dispatchEvent(new w.Event('submit', { cancelable: true }));
+    await sleep(300);
+    assert.equal(article.getAttribute('data-xjev-folded'), 'true');
+    w.document.body.insertAdjacentHTML('beforeend', post('322', text, actions));
+    await sleep(300);
+    assert.equal(w.document.querySelectorAll('[data-xjev-folded]').length, 2);
+    w.document.querySelector('#xjev-toast button').click();
+    await sleep(300);
+    assert.equal(w.document.querySelectorAll('[data-xjev-folded]').length, 0);
+    article.querySelector('.xjev-manual').click();
+    const staleAction = w.document.querySelector('[data-kind="author"]');
+    article.querySelector('[data-testid="tweetText"]').textContent = 'Recycled comment';
+    staleAction.click();
+    assert.equal(writes, 1);
+    // X may rebuild its detail action bar without changing the post identity.
+    article.querySelector('[role="group"]').outerHTML = actions.replace('Share post', '分享帖子');
+    await sleep(300);
+    assert.equal(article.querySelectorAll('.xjev-manual').length, 1);
+    assert.ok(article.querySelector('.xjev-manual-slot').nextElementSibling.querySelector('[aria-label="分享帖子"]'));
+    article.querySelector('[role="group"]').remove();
+    await sleep(300);
+    assert.equal(article.querySelectorAll('.xjev-manual').length, 0, 'no floating fallback while action bar is missing');
+  } finally { w.close(); }
+});
+
+test('semantic folding identifies the matched rule and restores when the rule is disabled', async () => {
+  const page = new JSDOM(post('888', '推广课程'), { url: 'https://x.com/home', runScripts: 'outside-only', pretendToBeVisual: true });
+  const w = page.window;
+  w.eval(learningCode); w.eval(rulesCode);
+  const rule = w.XJevRules.clean({ recordId: 'specific', kind: 'semantic', name: '付费课程引流', description: '推广付费课程' });
+  let cfg = { enabled: true, aiEnabled: true, learningAiEnabled: true, categories: [], threshold: 0.95, allowlist: [], rules: [rule] }, changed;
+  w.HTMLElement.prototype.getBoundingClientRect = () => ({ top: 20, bottom: 200, width: 500 });
+  w.chrome = { runtime: { id: 'test', sendMessage: async m => m.type === 'config' ? cfg : { probability: 0.01, ruleScores: [{ recordId: 'specific', probability: 0.99 }] } }, storage: { onChanged: { addListener: fn => { changed = fn; } } } };
+  w.eval(domCode); w.eval(contentCode);
+  try {
+    await sleep(650);
+    assert.match(w.document.querySelector('.xjev-placeholder').textContent, /付费课程引流/);
+    cfg = { ...cfg, rules: [{ ...rule, enabled: false }] }; changed({ rules: {} }, 'local');
+    await sleep(300);
+    assert.equal(w.document.querySelector('article').hasAttribute('data-xjev-folded'), false);
   } finally { w.close(); }
 });
